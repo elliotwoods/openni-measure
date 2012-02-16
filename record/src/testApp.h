@@ -7,7 +7,7 @@
 
 #include "OpenNI2ViewNode.h"
 
-#define XYZ_EXT "-depth.png"
+#define XYZ_EXT "-xyz.hdr"
 #define RGB_EXT "-rgb.jpg"
 
 class testApp : public ofBaseApp, public ofThread {
@@ -40,6 +40,7 @@ protected:
 	//
 	//////////////////
 	
+	
 	OpenNI2ViewNode		kinectView;
 	
 	
@@ -57,20 +58,20 @@ protected:
 	//
 	//////////////////
 	
+    
 	////
 	//recording
 	////
 	//
+	void	chooseSessionName();
 	void	threadedFunction();
+	bool	needsCapture;
 	void	capture();
-	float	interval;
-	float	lastCapture;
-	bool	recording;
 	unsigned int count;
-	ofImage rgb;
-	ofShortImage depth;
-	string	path;
-	wdgButton wdgSelectPath;
+	ofPixels rgb;
+	ofFloatPixels xyz;
+	string sessionName;
+	wdgButton wdgNewSession;
 	//
 	////
 };

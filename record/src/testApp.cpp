@@ -1,13 +1,11 @@
 #include "testApp.h"
 
 testApp::testApp() :
-kinectView(kinect),
-
 scrPreviewDepth("Depth", kinect.getDepthTextureReference()),
 scrPreviewRGB("RGB", kinect.getRGBTextureReference()),
 scr3D("3D", kinectView),
 
-wdgSelectPath("Select path")
+wdgNewSession("Select path")
 
 {
 	scrMain.push(scrPreviewDepth);
@@ -17,14 +15,17 @@ wdgSelectPath("Select path")
 	
 	scr3D.enableGrid(3.0f);
 	//scr3D.setCursorEnabled(true);
-	scrControl.push(new wdgButton("recording", recording));
-	scrControl.push(new wdgSlider("interval", interval, 0, 20, 0.1, "s"));
+	scrControl.push(&wdgNewSession);
+	scrControl.push(new wdgButton("Capture [SPACE]", needsCapture));
 	scrControl.push(new wdgCounter("snaps taken", count));
-	scrControl.push(&wdgSelectPath);
-	
+	scrControl.push(new wdgSlider("Point size", kinectView.pointSize, 1.0f, 20.0f, 1.0f, "px"));
+    
 	wdgButton* open = new wdgButton("Connected", this->open);
 	scrControl.push(open);
 	open->enabled = false;
+	count = 0;
+	needsCapture = false;
+
 }
 
 //--------------------------------------------------------------
@@ -34,18 +35,16 @@ void testApp::setup(){
 	ofSetVerticalSync(true);
 	ofSetFrameRate(30);
 	
-	kinect.setupFromXML("ofxopenni_config.xml");
-	kinect.enableCalibratedRGBDepth();
+	if (!kinect.setupFromXML("settings/ofxopenni_config.xml")) {
+		ofSystemAlertDialog("Failed to initialise device. Check config xml!");
+		std::exit(0);
+	}
 
-	lastCapture = 0;
-	count = 0;
-	interval = 5.0f;
-	recording = true;
-	path = "";
-	
-	depth.allocate(640, 480, OF_IMAGE_GRAYSCALE);
-	rgb.allocate(640, 480, OF_IMAGE_COLOR);
+	kinect.enableCalibratedRGBDepth();
+	kinectView.init(kinect);
 	startThread(true, false);
+
+	chooseSessionName();
 }
 
 //--------------------------------------------------------------
@@ -54,13 +53,13 @@ void testApp::update(){
 	kinect.update();
 	unlock();
 	
-	if (wdgSelectPath.getBang())
-		path = ofSystemSaveDialog("timelapse", "Timelapse save path").getPath();
+	if (wdgNewSession.getBang())
+		chooseSessionName();
 }
 
 void testApp::threadedFunction() {
 	while (isThreadRunning()) {
-		if (recording && ofGetElapsedTimef() - lastCapture >= interval)
+		if (needsCapture)
 			capture();
 		ofSleepMillis(10);
 	}
@@ -72,6 +71,8 @@ void testApp::draw(){
 
 //--------------------------------------------------------------
 void testApp::keyPressed(int key){
+	if (key==' ')
+		needsCapture = true;
 }
 
 //--------------------------------------------------------------
@@ -115,27 +116,28 @@ void testApp::dragEvent(ofDragInfo dragInfo){
 }
 
 //--------------------------------------------------------------
+void testApp::chooseSessionName() {
+	stringstream name;
+	name << ofGetYear() << "-" << ofGetMonth() << "-" << ofGetDay() << "," << ofGetHours() << "." << ofGetMinutes() << "." << ofGetSeconds();
+	sessionName = ofSystemSaveDialog(name.str(), "Choose session save path").getPath();
+	
+	ofDirectory::createDirectory(sessionName);
+}
+//--------------------------------------------------------------
 void testApp::capture(){
 	if (!kinect.getDepthPixels().isAllocated())
 		return;
 	
-	stringstream dateString;
-	dateString << ofGetYear() << "-" << ofGetMonth() << "-" << ofGetDay() << "," << ofGetHours() << "." << ofGetMinutes() << "." << ofGetSeconds() << "-" << ofGetElapsedTimeMillis();
+	string filename = sessionName + "/" + ofToString(ofGetElapsedTimeMillis(),0);
 	
 	lock();
-	memcpy(rgb.getPixels(),	kinect.getRGBPixels().getPixels(), sizeof(unsigned char) * 640 * 480 * 3);
-	memcpy(depth.getPixels(),	kinect.getDepthRawPixels().getPixels(), sizeof(unsigned short) * 640 * 480);
+	rgb = kinect.getRGBPixels();
+	xyz = kinectView.getXYZ();
 	unlock();
 	
-	string savePath;
-	if (path != "")
-		savePath = path + "/" + dateString.str();
-	else
-		savePath = dateString.str();
+	ofSaveImage(rgb, filename + string(RGB_EXT));
+	ofSaveImage(xyz, filename + string(XYZ_EXT));
 	
-	rgb.saveImage(savePath + string(RGB_EXT));
-	depth.saveImage(savePath + string(XYZ_EXT));
-	
-	lastCapture = ofGetElapsedTimef();
 	count++;
+	needsCapture = false;
 }
